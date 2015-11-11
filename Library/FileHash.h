@@ -22,6 +22,7 @@
 
 @interface FileHash : NSObject
 
++ (NSString *)awsS3EtagOfFileAtPath:(NSString *)filePath partSize:(long)partSize;
 + (NSString *)md5HashOfFileAtPath:(NSString *)filePath;
 + (NSString *)sha1HashOfFileAtPath:(NSString *)filePath;
 + (NSString *)sha512HashOfFileAtPath:(NSString *)filePath;

@@ -124,4 +124,85 @@ typedef struct _FileHashComputationContext {
     return [self hashOfFileAtPath:filePath withComputationContext:&context];
 }
 
++ (NSArray*)hashesOfFileAtPath:(NSString *)filePath withComputationContext:(FileHashComputationContext *)context partSize:(long)partSize {
+    NSMutableArray *results = [NSMutableArray array];
+    CFURLRef fileURL = CFURLCreateWithFileSystemPath(kCFAllocatorDefault, (CFStringRef)filePath, kCFURLPOSIXPathStyle, (Boolean)false);
+    CFReadStreamRef readStream = fileURL ? CFReadStreamCreateWithFile(kCFAllocatorDefault, fileURL) : NULL;
+    BOOL didSucceed = readStream ? (BOOL)CFReadStreamOpen(readStream) : NO;
+    if (didSucceed) {
+        
+        // Use default value for the chunk size for reading data.
+        const size_t chunkSizeForReadingData = FileHashDefaultChunkSizeForReadingData;
+        
+        BOOL hasMoreData = YES;
+        
+        while (hasMoreData) {
+            // Initialize the hash object
+            (*context->initFunction)(context->hashObjectPointer);
+            
+            // Feed the data to the hash object.
+            CFIndex readBytesThisPart = 0;
+            while (hasMoreData && readBytesThisPart < partSize) {
+                uint8_t buffer[chunkSizeForReadingData];
+                CFIndex readBytesCount = CFReadStreamRead(readStream, (UInt8 *)buffer, (CFIndex)sizeof(buffer));
+                readBytesThisPart += readBytesCount;
+                if (readBytesCount == -1) {
+                    break;
+                } else if (readBytesCount == 0) {
+                    hasMoreData = NO;
+                } else {
+                    (*context->updateFunction)(context->hashObjectPointer, (const void *)buffer, (CC_LONG)readBytesCount);
+                }
+            }
+            
+            // Compute the hash digest
+            unsigned char digest[context->digestLength];
+            (*context->finalFunction)(digest, context->hashObjectPointer);
+            
+            // Proceed if the read operation succeeded.
+            didSucceed = (!hasMoreData || readBytesThisPart == partSize);
+            if (didSucceed) {
+                NSData *thisResult = [[NSData alloc] initWithBytes:digest length:sizeof(digest)];
+                [results addObject:thisResult];
+            } else {
+                break;
+            }
+        }
+        // Close the read stream.
+        CFReadStreamClose(readStream);
+    }
+    if (readStream) CFRelease(readStream);
+    if (fileURL)    CFRelease(fileURL);
+    
+    return results;
+}
+
++ (NSString *)awsS3EtagOfFileAtPath:(NSString *)filePath partSize:(long)partSize {
+    FileHashComputationContext context;
+    FileHashComputationContextInitialize(context, MD5);
+    NSArray *hashResults = [FileHash hashesOfFileAtPath:filePath withComputationContext:&context partSize:partSize];
+    
+    if(hashResults.count) {
+        //Combine hashes and format as eTag
+        NSMutableData *concatenatedHashes = [NSMutableData data];
+        for(NSData *partHash in hashResults) {
+            [concatenatedHashes appendData:partHash];
+        }
+        unsigned char md5Buffer[CC_MD5_DIGEST_LENGTH];
+        CC_MD5(concatenatedHashes.bytes, concatenatedHashes.length, md5Buffer);
+        char hash[2 * sizeof(md5Buffer) + 1];
+        for (size_t i = 0; i < sizeof(md5Buffer); ++i) {
+            snprintf(hash + (2 * i), 3, "%02x", (int)(md5Buffer[i]));
+        }
+        
+        if(hashResults.count > 1) {
+            return [NSString stringWithFormat:@"%s-%lu", hash, (unsigned long)[hashResults count]];
+        } else {
+            return [NSString stringWithFormat:@"%s", hash];
+        }
+    } else {
+        return nil;
+    }
+}
+
 @end
