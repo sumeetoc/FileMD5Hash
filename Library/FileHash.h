@@ -26,5 +26,6 @@
 + (NSString *)md5HashOfFileAtPath:(NSString *)filePath;
 + (NSString *)sha1HashOfFileAtPath:(NSString *)filePath;
 + (NSString *)sha512HashOfFileAtPath:(NSString *)filePath;
++ (long)getChunkSizeForPath:(NSString*)filePath eTag:(NSString*)thisEtag;
 
 @end

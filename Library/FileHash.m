@@ -189,7 +189,7 @@ typedef struct _FileHashComputationContext {
             [concatenatedHashes appendData:partHash];
         }
         unsigned char md5Buffer[CC_MD5_DIGEST_LENGTH];
-        CC_MD5(concatenatedHashes.bytes, concatenatedHashes.length, md5Buffer);
+        CC_MD5(concatenatedHashes.bytes, (unsigned int)concatenatedHashes.length, md5Buffer);
         char hash[2 * sizeof(md5Buffer) + 1];
         for (size_t i = 0; i < sizeof(md5Buffer); ++i) {
             snprintf(hash + (2 * i), 3, "%02x", (int)(md5Buffer[i]));
@@ -202,6 +202,27 @@ typedef struct _FileHashComputationContext {
         }
     } else {
         return nil;
+    }
+}
+
++ (long)getChunkSizeForPath:(NSString*)filePath eTag:(NSString*)thisEtag {
+    NSDictionary *properties = [[NSFileManager defaultManager] attributesOfItemAtPath:filePath error:nil];
+    unsigned long long fileSize = [properties[NSFileSize] unsignedLongLongValue];
+    
+    NSArray *stringParts = [thisEtag componentsSeparatedByString:@"-"];
+    if(stringParts.count == 2) {
+        NSInteger downloadParts = [[stringParts lastObject] integerValue];
+        //Figure out what chunk size will match this file
+        for(int i = 1; i < 50; i++) {
+            NSInteger testChunkSize = 1024 * 1024 * i;
+            NSInteger chunkCountWithTestSize = (NSInteger)ceil((float)fileSize / (float)testChunkSize); //round up for partial chunks
+            if(chunkCountWithTestSize == downloadParts) {
+                return testChunkSize;
+            }
+        }
+        return 0;
+    } else {
+        return (long)fileSize + 1;
     }
 }
 
